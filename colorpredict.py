@@ -99,39 +99,53 @@ grid_df['longitude'] = grid_lons.ravel()
 # Step 5: Create interactive Folium map with heatmap overlay
 m = folium.Map(location=[lat_center, lon_center], zoom_start=12, tiles='OpenStreetMap')
 
-# Choropleth overlay for unsafe probability (red=unsafe, green=safe)
-grid_gdf = gpd.GeoDataFrame(grid_df, geometry=[Point(xy) for xy in zip(grid_df.longitude, grid_df.latitude)])
+# Function to determine color based on unsafe probability
+def get_color(prob):
+    if prob < 0.33:
+        return 'green'
+    elif prob < 0.67:
+        return 'orange'
+    else:
+        return 'red'
 
-# Bin probabilities for coloring
-grid_gdf['risk_level'] = pd.cut(grid_df['unsafe_prob'], bins=[0, 0.3, 0.7, 1], labels=['Safe 🟢', 'Moderate 🟡', 'Unsafe 🔴'])
+# Add grid points as colored circles (heatmap effect)
+for idx, row in grid_df.iterrows():
+    color = get_color(row['unsafe_prob'])
+    folium.CircleMarker(
+        location=[row['latitude'], row['longitude']],
+        radius=4,
+        popup=f"Risk: {row['unsafe_prob']:.1%}",
+        color=color,
+        fill=True,
+        fillColor=color,
+        fillOpacity=0.6,
+        weight=1
+    ).add_to(m)
 
-folium.Choropleth(
-    geo_data=grid_gdf.set_index('risk_level').geometry.unary_union,  # Simplified for demo
-    data=grid_df,
-    columns=['latitude', 'unsafe_prob'],  # Use lat as fake 'region' for scatter-like effect
-    key_on='feature.geometry',  # Note: Simplified; use plugins for true heatmap
-    fill_color='RdYlGn_r',  # Red-Yellow-Green reverse (high prob = red)
-    fill_opacity=0.6,
-    line_opacity=0.1,
-    legend_name='Unsafe Probability',
-    nan_fill_color='white',
-    bins=5
-).add_to(m)
-
-# Add original data points
-safe_points = folium.features.CircleMarker(
-    location=df[df['unsafe']==0][['latitude', 'longitude']].values,
-    radius=3, popup='Safe Area', color='green', fill=True, fillColor='green', fillOpacity=0.7
-)
-unsafe_points = folium.features.CircleMarker(
-    location=df[df['unsafe']==1][['latitude', 'longitude']].values,
-    radius=4, popup='Unsafe Area', color='red', fill=True, fillColor='red', fillOpacity=0.7
-)
-
-for point in safe_points:
-    point.add_to(m)
-for point in unsafe_points:
-    point.add_to(m)
+# Add original training data points with larger markers
+for idx, row in df.iterrows():
+    if row['unsafe'] == 0:
+        folium.CircleMarker(
+            location=[row['latitude'], row['longitude']],
+            radius=3,
+            popup='Safe Area (Training)',
+            color='darkgreen',
+            fill=True,
+            fillColor='lightgreen',
+            fillOpacity=0.5,
+            weight=1
+        ).add_to(m)
+    else:
+        folium.CircleMarker(
+            location=[row['latitude'], row['longitude']],
+            radius=3,
+            popup='Unsafe Area (Training)',
+            color='darkred',
+            fill=True,
+            fillColor='lightcoral',
+            fillOpacity=0.5,
+            weight=1
+        ).add_to(m)
 
 m.save('safety_map.html')
 print("\n✅ Map saved as 'safety_map.html' – Open in browser for interactive view!")
