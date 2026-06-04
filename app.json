@@ -1,0 +1,20 @@
+{
+  "expo": {
+    "name": "w-saferoutes",
+    "slug": "snack-f3cfb608-16be-4354-b6fc-f7ba3e181449",
+    "version": "1.0.0",
+    "orientation": "portrait",
+    "userInterfaceStyle": "light",
+    "ios": {
+      "supportsTablet": true
+    },
+    "android": {
+      "adaptiveIcon": {
+        "backgroundColor": "#ffffff"
+      }
+    },
+    "plugins": [
+      "expo-status-bar"
+    ]
+  }
+}
