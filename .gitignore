@@ -5,3 +5,7 @@ __pycache__/
 *.pyc
 dist/
 *.log
+users.json
+sos_emergency_log.json
+emergency_contacts.json
+*_safety_map_gen.html

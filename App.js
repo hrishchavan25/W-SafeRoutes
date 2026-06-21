@@ -1,6 +1,9 @@
 // App.js
-import React, { useState } from "react";
+import React, { useState, useEffect } from "react";
+import AsyncStorage from "@react-native-async-storage/async-storage";
 import MLDashboard from "./MLDashboard";
+import Dashboard from "./Dashboard";
+import { AUTH_BACKEND_URL } from "./config";
 import {
   View,
   Text,
@@ -17,94 +20,6 @@ const connectToDatabase = () => {
   console.log("Database connection setup will go here");
 };
 
-// Dashboard Component
-function Dashboard({ userName, onLogout }) {
-  const handleMapPress = () => {
-    console.log("Navigate to Map");
-    Alert.alert("Map", "Opening Safe Routes Map...");
-  };
-
-  const handleProfilePress = () => {
-    console.log("Navigate to Profile");
-    Alert.alert("Profile", "Opening Profile...");
-  };
-
-  const handleSOSPress = () => {
-    console.log("SOS Alert Triggered!");
-    Alert.alert("🚨 SOS Alert", "Your emergency alert has been triggered!");
-  };
-
-  return (
-    <ImageBackground
-      source={{
-        uri: "https://wallpaperaccess.com/full/5244290.jpg",
-      }}
-      style={styles.background}
-      resizeMode="cover"
-    >
-      <StatusBar barStyle="light-content" />
-      <View style={styles.overlay}>
-        <View style={styles.header}>
-          <Text style={styles.welcomeText}>Welcome back,</Text>
-          <Text style={styles.userName}>{userName}</Text>
-        </View>
-
-        <View style={styles.cardContainer}>
-          {/* Map Card */}
-          <TouchableOpacity
-            style={[styles.card, styles.mapCard]}
-            onPress={handleMapPress}
-            activeOpacity={0.8}
-          >
-            <View style={styles.iconCircle}>
-              <Text style={styles.iconEmoji}>🗺️</Text>
-            </View>
-            <Text style={styles.cardTitle}>Safe Routes Map</Text>
-            <Text style={styles.cardSubtitle}>
-              Find the safest path to your destination
-            </Text>
-          </TouchableOpacity>
-
-          {/* Profile Card */}
-          <TouchableOpacity
-            style={[styles.card, styles.profileCard]}
-            onPress={handleProfilePress}
-            activeOpacity={0.8}
-          >
-            <View style={styles.iconCircle}>
-              <Text style={styles.iconEmoji}>👤</Text>
-            </View>
-            <Text style={styles.cardTitle}>Profile</Text>
-            <Text style={styles.cardSubtitle}>
-              View and edit your personal information
-            </Text>
-          </TouchableOpacity>
-        </View>
-
-        {/* SOS BUTTON */}
-        <View style={{ alignItems: "center", marginVertical: 30 }}>
-          <TouchableOpacity
-            style={styles.sosButton}
-            onPress={handleSOSPress}
-            activeOpacity={0.9}
-          >
-            <Text style={styles.sosIcon}>🚨</Text>
-            <Text style={styles.sosText}>SOS</Text>
-          </TouchableOpacity>
-        </View>
-
-        <TouchableOpacity style={styles.logoutButton} onPress={onLogout}>
-          <Text style={styles.logoutText}>Logout</Text>
-        </TouchableOpacity>
-
-        <View style={styles.footer}>
-          <Text style={styles.footerText}>Stay safe. Stay connected.</Text>
-        </View>
-      </View>
-    </ImageBackground>
-  );
-}
-
 // Main App Component
 export default function App() {
   const [isLogin, setIsLogin] = useState(true);
@@ -114,8 +29,28 @@ export default function App() {
   const [password, setPassword] = useState("");
   const [confirmPassword, setConfirmPassword] = useState("");
   const [userName, setUserName] = useState("");
+  const [currentScreen, setCurrentScreen] = useState("dashboard");
 
-  const handleSubmit = () => {
+  useEffect(() => {
+    checkSavedSession();
+  }, []);
+
+  const checkSavedSession = async () => {
+    try {
+      const session = await AsyncStorage.getItem("user_session");
+      if (session) {
+        const parsed = JSON.parse(session);
+        if (parsed && parsed.name) {
+          setUserName(parsed.name);
+          setIsLoggedIn(true);
+        }
+      }
+    } catch (e) {
+      console.log("Failed to load session:", e);
+    }
+  };
+
+  const handleSubmit = async () => {
     if (isLogin) {
       if (!email && !password) {
         Alert.alert("Missing Details", "Please enter your email and password.");
@@ -128,10 +63,38 @@ export default function App() {
         return;
       }
 
-      connectToDatabase();
-      setUserName(email.split("@")[0]);
-      setIsLoggedIn(true);
-      Alert.alert("Welcome Back!", `Logged in as ${email}`);
+      try {
+        const response = await fetch(`${AUTH_BACKEND_URL}/api/auth/login`, {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+          },
+          body: JSON.stringify({ email: email.toLowerCase().trim(), password }),
+        });
+        const data = await response.json();
+
+        if (response.ok) {
+          const loggedInName = data.name || email.split("@")[0];
+          setUserName(loggedInName);
+          setIsLoggedIn(true);
+
+          // Save session to device database (AsyncStorage)
+          await AsyncStorage.setItem(
+            "user_session",
+            JSON.stringify({ name: loggedInName, email: email.toLowerCase().trim() })
+          );
+
+          Alert.alert("Welcome Back!", `Logged in as ${loggedInName}`);
+        } else {
+          Alert.alert("Login Failed", data.message || "Invalid credentials.");
+        }
+      } catch (err) {
+        console.error("Login connection error:", err);
+        Alert.alert(
+          "Connection Error",
+          "Could not connect to the authentication server. Please check if backend is running on port 5001."
+        );
+      }
     } else {
       if (!name && !email && !password && !confirmPassword) {
         Alert.alert("Missing Details", "Please fill in all fields to sign up.");
@@ -153,26 +116,81 @@ export default function App() {
         return;
       }
 
-      connectToDatabase();
-      setUserName(name);
-      setIsLoggedIn(true);
-      Alert.alert("Account Created", `Welcome, ${name}!`);
+      try {
+        const response = await fetch(`${AUTH_BACKEND_URL}/api/auth/signup`, {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+          },
+          body: JSON.stringify({
+            name: name.trim(),
+            email: email.toLowerCase().trim(),
+            password,
+          }),
+        });
+        const data = await response.json();
+
+        if (response.ok) {
+          Alert.alert(
+            "Account Created",
+            "Signup successful! Please log in with your new credentials."
+          );
+          setIsLogin(true);
+          setPassword("");
+          setConfirmPassword("");
+        } else {
+          Alert.alert("Signup Failed", data.message || "Could not register user.");
+        }
+      } catch (err) {
+        console.error("Signup connection error:", err);
+        Alert.alert(
+          "Connection Error",
+          "Could not connect to the authentication server. Please check if backend is running on port 5001."
+        );
+      }
     }
   };
 
-  const handleLogout = () => {
+  const handleLogout = async () => {
+    try {
+      await AsyncStorage.removeItem("user_session");
+    } catch (e) {
+      console.log("Error clearing session:", e);
+    }
     setIsLoggedIn(false);
     setName("");
     setEmail("");
     setPassword("");
     setConfirmPassword("");
     setUserName("");
+    setCurrentScreen("dashboard");
     Alert.alert("Logged Out", "You have been logged out successfully.");
   };
 
   if (isLoggedIn) {
-  return <MLDashboard userName={userName} onLogout={handleLogout} />;
-}
+    if (currentScreen === "mldashboard") {
+      return (
+        <MLDashboard
+          userName={userName}
+          onLogout={handleLogout}
+          onBack={() => setCurrentScreen("dashboard")}
+        />
+      );
+    }
+    return (
+      <Dashboard
+        userName={userName}
+        navigation={{
+          navigate: (screen) => {
+            if (screen === "Map" || screen === "MLDashboard") {
+              setCurrentScreen("mldashboard");
+            }
+          },
+        }}
+        onLogout={handleLogout}
+      />
+    );
+  }
 
   return (
     <ImageBackground

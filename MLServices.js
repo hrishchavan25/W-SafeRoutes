@@ -1,5 +1,5 @@
 import AsyncStorage from '@react-native-async-storage/async-storage';
-import { BACKEND_URL } from './config';
+import { BACKEND_URL, SOS_BACKEND_URL } from './config';
 
 class MLService {
   static async getApiHost() {
@@ -101,6 +101,21 @@ class MLService {
       return await response.json();
     } catch (error) {
       console.error('A* route fetch failed:', error);
+      throw error;
+    }
+  }
+
+  static async activateSOS(sosData) {
+    try {
+      const host = SOS_BACKEND_URL || BACKEND_URL.replace(":8100", ":5000");
+      const response = await fetch(`${host.replace(/\/$/, '')}/api/sos/activate`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(sosData),
+      });
+      return await response.json();
+    } catch (error) {
+      console.error('SOS activation failed:', error);
       throw error;
     }
   }

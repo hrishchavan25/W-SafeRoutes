@@ -42,34 +42,68 @@ def get_zone_color(prob):
 # =====================================
 # LOAD + NORMALIZE DATASET
 # =====================================
+def _safety_text_to_prob(text):
+    """Convert free-text safety rating into an unsafe probability [0..1]."""
+    t = str(text).lower().strip()
+    # Explicit unsafe signals
+    if any(k in t for k in ['unsafe', 'not safe', 'not at all safe', 'back road unsafe',
+                              'not comfortable', 'avoid', 'catcall', 'stare', 'harassment']):
+        return 0.80
+    # Explicit safe signals
+    if any(k in t for k in ['safe', 'good', 'okay', 'ok', 'mostly safe']):
+        return 0.20
+    return 0.50  # neutral / ambiguous
+
+
 def load_dataset():
     global _grid_df
 
     if _grid_df is None:
         _grid_df = pd.read_csv(DATASET_PATH)
 
-        # Ensure unsafe + unsafe_prob exist
+        # --- Derive unsafe_prob --------------------------------------------------
+        if "unsafe_prob" not in _grid_df.columns and "unsafe" not in _grid_df.columns:
+            # Priority 1: numeric feature columns (crime_density etc.)
+            if set(FEATURES).issubset(set(_grid_df.columns)):
+                vals = _grid_df[FEATURES].fillna(0.0)
+                score = (
+                    0.25 * vals["crime_density"]
+                    - 0.6  * vals["lighting_score"]
+                    + 0.008 * vals["pop_density"]
+                    + 0.15 * vals["night_activity"]
+                )
+                _grid_df["unsafe_prob"] = 1 / (1 + np.exp(-(score - 1.0)))
+            else:
+                # Priority 2: free-text safety column (Andheri survey data)
+                soc = next(
+                    (c for c in _grid_df.columns
+                     if c.lower() in ('safety_overall_clean', 'safety_overall')),
+                    None
+                )
+                if soc:
+                    _grid_df["unsafe_prob"] = _grid_df[soc].apply(_safety_text_to_prob)
+                else:
+                    _grid_df["unsafe_prob"] = 0.35  # default: mostly safe
+
         if "unsafe" not in _grid_df.columns:
             if "unsafe_prob" in _grid_df.columns:
                 _grid_df["unsafe"] = (_grid_df["unsafe_prob"] > 0.5).astype(int)
             else:
-                if set(FEATURES).issubset(set(_grid_df.columns)):
-                    vals = _grid_df[FEATURES].fillna(0.0)
-                    score = (
-                        0.25 * vals["crime_density"]
-                        - 0.6 * vals["lighting_score"]
-                        + 0.008 * vals["pop_density"]
-                        + 0.15 * vals["night_activity"]
-                    )
-                    prob = 1 / (1 + np.exp(-(score - 1.0)))
-                    _grid_df["unsafe_prob"] = prob
-                    _grid_df["unsafe"] = (prob > 0.5).astype(int)
-                else:
-                    _grid_df["unsafe"] = 0
-                    _grid_df["unsafe_prob"] = 0.0
+                _grid_df["unsafe"] = 0
+                _grid_df["unsafe_prob"] = 0.35
 
         if "unsafe_prob" not in _grid_df.columns:
             _grid_df["unsafe_prob"] = _grid_df["unsafe"].astype(float)
+
+        # --- Aggregate multiple survey responses per lat/lon ---------------------
+        if "latitude" in _grid_df.columns and "longitude" in _grid_df.columns:
+            _grid_df = (
+                _grid_df
+                .groupby(["latitude", "longitude"], as_index=False)
+                .agg(unsafe_prob=("unsafe_prob", "mean"))
+                .copy()
+            )
+            _grid_df["unsafe"] = (_grid_df["unsafe_prob"] > 0.5).astype(int)
 
     return _grid_df
 

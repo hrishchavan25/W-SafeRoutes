@@ -12,8 +12,11 @@ import {
   SafeAreaView,
   StatusBar,
   Animated,
+  Platform,
+  Linking,
 } from "react-native";
 import { Picker } from "@react-native-picker/picker";
+import { Ionicons } from "@expo/vector-icons";
 import MLService from "./MLServices";
 import SafetyRouteMap from "./components/SafetyRouteMap";
 import { BACKEND_URL } from "./config";
@@ -23,6 +26,7 @@ const { width, height } = Dimensions.get("window");
 
 const CITY_PLACE_DEFAULTS = {
   chicago: { from: "Millennium Park", to: "Lincoln Park Zoo" },
+  mumbai: { from: "Andheri Railway Station", to: "Versova Beach" },
   andheri: { from: "Andheri Railway Station", to: "Versova Beach" },
 };
 
@@ -39,15 +43,18 @@ function regionFromPoints(lat1, lon1, lat2, lon2) {
   };
 }
 
-export default function MLDashboard({ userName = "User", onLogout }) {
+export default function MLDashboard({ userName = "User", onLogout, onBack }) {
   const CHICAGO_REGION = { latitude: 41.8781, longitude: -87.6298, latitudeDelta: 0.12, longitudeDelta: 0.12 };
   const CHICAGO_SOURCE = { lat: 41.8810, lon: -87.6278 };
   const CHICAGO_DEST = { lat: 41.7914, lon: -87.6005 };
+  const MUMBAI_REGION = { latitude: 19.124, longitude: 72.825, latitudeDelta: 0.12, longitudeDelta: 0.12 };
+  const MUMBAI_SOURCE = { lat: 19.1248, lon: 72.8254 };
+  const MUMBAI_DEST = { lat: 19.1350, lon: 72.8150 };
   const ANDHERI_REGION = { latitude: 19.124, longitude: 72.825, latitudeDelta: 0.04, longitudeDelta: 0.04 };
   const ANDHERI_SOURCE = { lat: 19.1248, lon: 72.8254 };
   const ANDHERI_DEST = { lat: 19.1350, lon: 72.8150 };
 
-  const [selectedCity, setSelectedCity] = useState("chicago");
+  const [selectedCity, setSelectedCity] = useState("mumbai");
   const [apiHost, setApiHost] = useState(BACKEND_URL);
   const [loading, setLoading] = useState(false);
   const [zonesLoading, setZonesLoading] = useState(false);
@@ -61,16 +68,20 @@ export default function MLDashboard({ userName = "User", onLogout }) {
   const [avgRisk, setAvgRisk] = useState(null);
   const [routeDistance, setRouteDistance] = useState(null);
 
+  // External Maps Navigation Redirect URLs
+  const [googleMapsUrl, setGoogleMapsUrl] = useState(null);
+  const [appleMapsUrl, setAppleMapsUrl] = useState(null);
+
   // Map settings
   const [mapRegion, setMapRegion] = useState({
-    ...CHICAGO_REGION,
+    ...MUMBAI_REGION,
   });
 
   // Locations (filled from place names via /geocode)
-  const [source, setSource] = useState(CHICAGO_SOURCE);
-  const [destination, setDestination] = useState(CHICAGO_DEST);
-  const [fromPlace, setFromPlace] = useState(CITY_PLACE_DEFAULTS.chicago.from);
-  const [toPlace, setToPlace] = useState(CITY_PLACE_DEFAULTS.chicago.to);
+  const [source, setSource] = useState(MUMBAI_SOURCE);
+  const [destination, setDestination] = useState(MUMBAI_DEST);
+  const [fromPlace, setFromPlace] = useState(CITY_PLACE_DEFAULTS.mumbai.from);
+  const [toPlace, setToPlace] = useState(CITY_PLACE_DEFAULTS.mumbai.to);
   const [fromRegionId, setFromRegionId] = useState("railway");
   const [toRegionId, setToRegionId] = useState("versova");
 
@@ -115,13 +126,22 @@ export default function MLDashboard({ userName = "User", onLogout }) {
     setSelectedCity(city);
     setRoute([]);
     setFastestRoute([]);
-    const defaults = CITY_PLACE_DEFAULTS[city] || CITY_PLACE_DEFAULTS.chicago;
+    setGoogleMapsUrl(null);
+    setAppleMapsUrl(null);
+    const defaults = CITY_PLACE_DEFAULTS[city] || CITY_PLACE_DEFAULTS.mumbai;
     setFromPlace(defaults.from);
     setToPlace(defaults.to);
     if (city === "chicago") {
       setSource(CHICAGO_SOURCE);
       setDestination(CHICAGO_DEST);
       setMapRegion(CHICAGO_REGION);
+      refreshData(apiHost, city);
+      return;
+    }
+    if (city === "mumbai") {
+      setSource(MUMBAI_SOURCE);
+      setDestination(MUMBAI_DEST);
+      setMapRegion(MUMBAI_REGION);
       refreshData(apiHost, city);
       return;
     }
@@ -182,6 +202,8 @@ export default function MLDashboard({ userName = "User", onLogout }) {
     if (loading) return;
     setLoading(true);
     setNetworkError(null);
+    setGoogleMapsUrl(null);
+    setAppleMapsUrl(null);
 
     const resolved = await resolvePlacesToCoordinates();
     if (!resolved) {
@@ -208,6 +230,8 @@ export default function MLDashboard({ userName = "User", onLogout }) {
             setRoute(data.route);
             setTrafficDelay(data.traffic_delay_minutes);
             setAvgRisk(data.average_risk);
+            if (data.google_maps_url) setGoogleMapsUrl(data.google_maps_url);
+            if (data.apple_maps_url) setAppleMapsUrl(data.apple_maps_url);
 
             // Center map on the safest route
             const midIdx = Math.floor(data.route.length / 2);
@@ -272,11 +296,18 @@ export default function MLDashboard({ userName = "User", onLogout }) {
 
       {/* Header */}
       <View style={styles.header}>
-        <View>
-          <Text style={styles.headerTitle}>SECURE<Text style={{ color: '#0A84FF' }}>ROUTES</Text></Text>
-          <View style={{ flexDirection: 'row', alignItems: 'center' }}>
-            <Text style={styles.headerSubtitle}>AI Analysis Agent • </Text>
-            <Text style={[styles.headerSubtitle, { color: '#FFF' }]}>{userName}</Text>
+        <View style={{ flexDirection: "row", alignItems: "center" }}>
+          {onBack && (
+            <TouchableOpacity onPress={onBack} style={{ marginRight: 12 }}>
+              <Ionicons name="chevron-back" size={28} color="#0A84FF" />
+            </TouchableOpacity>
+          )}
+          <View>
+            <Text style={styles.headerTitle}>SECURE<Text style={{ color: '#0A84FF' }}>ROUTES</Text></Text>
+            <View style={{ flexDirection: 'row', alignItems: 'center' }}>
+              <Text style={styles.headerSubtitle}>AI Analysis Agent • </Text>
+              <Text style={[styles.headerSubtitle, { color: '#FFF' }]}>{userName}</Text>
+            </View>
           </View>
         </View>
         <View style={{ flexDirection: 'row', alignItems: 'center' }}>
@@ -300,16 +331,22 @@ export default function MLDashboard({ userName = "User", onLogout }) {
           <Text style={styles.cardLabel}>AI BACKEND (FROM CONFIG.JS)</Text>
           <View style={[styles.inputRow, { marginBottom: 10 }]}>
             <TouchableOpacity
-              style={[styles.connectBtn, selectedCity === "chicago" ? null : { backgroundColor: "#2C2C2E" }]}
+              style={[styles.connectBtn, { flex: 1, marginRight: 6 }, selectedCity === "chicago" ? null : { backgroundColor: "#2C2C2E" }]}
               onPress={() => switchCity("chicago")}
             >
-              <Text style={styles.connectBtnText}>Chicago (1000)</Text>
+              <Text style={[styles.connectBtnText, { textAlign: 'center' }]}>Chicago</Text>
             </TouchableOpacity>
             <TouchableOpacity
-              style={[styles.connectBtn, { marginLeft: 8 }, selectedCity === "andheri" ? null : { backgroundColor: "#2C2C2E" }]}
+              style={[styles.connectBtn, { flex: 1, marginRight: 6 }, selectedCity === "mumbai" ? null : { backgroundColor: "#2C2C2E" }]}
+              onPress={() => switchCity("mumbai")}
+            >
+              <Text style={[styles.connectBtnText, { textAlign: 'center' }]}>Mumbai</Text>
+            </TouchableOpacity>
+            <TouchableOpacity
+              style={[styles.connectBtn, { flex: 1 }, selectedCity === "andheri" ? null : { backgroundColor: "#2C2C2E" }]}
               onPress={() => switchCity("andheri")}
             >
-              <Text style={styles.connectBtnText}>Andheri</Text>
+              <Text style={[styles.connectBtnText, { textAlign: 'center' }]}>Andheri</Text>
             </TouchableOpacity>
           </View>
           <View style={styles.inputRow}>
@@ -326,7 +363,8 @@ export default function MLDashboard({ userName = "User", onLogout }) {
           </View>
           <Text style={styles.helperText}>
             City: {selectedCity}
-            {selectedCity === "chicago" ? " | Geocode + maps path (Chicago)" : " | Region dropdowns (Andheri)"}
+            {selectedCity === "chicago" ? " | Geocode + maps path (Chicago)" :
+              selectedCity === "mumbai" ? " | Geocode + maps path (Mumbai)" : " | Region dropdowns (Andheri)"}
           </Text>
 
           <TouchableOpacity style={styles.testBtn} onPress={testConnection}>
@@ -353,11 +391,12 @@ export default function MLDashboard({ userName = "User", onLogout }) {
         {/* Route Planning */}
         <View style={styles.glassCard}>
           <Text style={styles.cardLabel}>
-            {selectedCity === "chicago" ? "ROUTE (CHICAGO — SEARCH)" : "ROUTE (ANDHERI — REGIONS)"}
+            {selectedCity === "chicago" ? "ROUTE (CHICAGO — SEARCH)" :
+              selectedCity === "mumbai" ? "ROUTE (MUMBAI — SEARCH)" : "ROUTE (ANDHERI — REGIONS)"}
           </Text>
-          {selectedCity === "chicago" ? (
+          {selectedCity === "chicago" || selectedCity === "mumbai" ? (
             <Text style={styles.placeHint}>
-              Type start and end areas. The server geocodes them (OpenStreetMap). Open in Google / Apple Maps uses your safest-route waypoints (Chicago only).
+              Type start and end areas. The server geocodes them (OpenStreetMap). Open in Google / Apple Maps uses your safest-route waypoints ({selectedCity === "chicago" ? "Chicago" : "Mumbai"} only).
             </Text>
           ) : (
             <Text style={styles.placeHint}>
@@ -365,7 +404,7 @@ export default function MLDashboard({ userName = "User", onLogout }) {
             </Text>
           )}
 
-          {selectedCity === "chicago" ? (
+          {selectedCity === "chicago" || selectedCity === "mumbai" ? (
             <>
               <View style={styles.coordGroup}>
                 <Text style={styles.smallLabel}>FROM (AREA OR LANDMARK)</Text>
@@ -483,6 +522,33 @@ export default function MLDashboard({ userName = "User", onLogout }) {
             </Animated.View>
           )}
 
+          {/* External Map Redirection Buttons */}
+          {(googleMapsUrl || appleMapsUrl) && (
+            <View style={styles.redirectContainer}>
+              <Text style={styles.redirectTitle}>🚀 EXTERNAL NAVIGATION SHORTCUTS</Text>
+              <View style={styles.redirectRow}>
+                {googleMapsUrl ? (
+                  <TouchableOpacity
+                    style={[styles.redirectBtn, styles.googleBtn]}
+                    onPress={() => Linking.openURL(googleMapsUrl).catch(err => Alert.alert("Error", "Could not open Google Maps"))}
+                  >
+                    <Text style={styles.redirectBtnEmoji}>🟢</Text>
+                    <Text style={styles.redirectBtnText}>Google Maps</Text>
+                  </TouchableOpacity>
+                ) : null}
+                {appleMapsUrl && (Platform.OS === 'ios' || Platform.OS === 'web') ? (
+                  <TouchableOpacity
+                    style={[styles.redirectBtn, styles.appleBtn]}
+                    onPress={() => Linking.openURL(appleMapsUrl).catch(err => Alert.alert("Error", "Could not open Apple Maps"))}
+                  >
+                    <Text style={styles.redirectBtnEmoji}>🍎</Text>
+                    <Text style={styles.redirectBtnText}>Apple Maps</Text>
+                  </TouchableOpacity>
+                ) : null}
+              </View>
+            </View>
+          )}
+
           <TouchableOpacity
             style={[styles.actionBtn, loading && styles.disabledBtn]}
             onPress={runPrediction}
@@ -500,7 +566,7 @@ export default function MLDashboard({ userName = "User", onLogout }) {
         <View style={styles.infoCard}>
           <Text style={styles.infoTitle}>💡 Safety Intelligence</Text>
           <Text style={styles.infoText}>
-            Chicago: search by name and open Google or Apple Maps with your safest route as waypoints. Andheri: choose regions from the list (coordinates shown), then analyze.
+            Chicago/Mumbai: search by name and open Google or Apple Maps with your safest route as waypoints. Andheri: choose regions from the list (coordinates shown), then analyze.
           </Text>
         </View>
 
@@ -641,6 +707,51 @@ const styles = StyleSheet.create({
   statItem: { flex: 1, alignItems: 'center' },
   statValue: { fontSize: 18, fontWeight: 'bold', color: '#FFF' },
   statLabel: { fontSize: 8, color: '#8E8E93', marginTop: 4, fontWeight: 'bold' },
+  redirectContainer: {
+    backgroundColor: "#1C1C1E",
+    borderRadius: 16,
+    padding: 15,
+    marginBottom: 20,
+    borderWidth: 1,
+    borderColor: "#38383A",
+  },
+  redirectTitle: {
+    fontSize: 10,
+    fontWeight: "bold",
+    color: "#8E8E93",
+    marginBottom: 10,
+    letterSpacing: 1.0,
+  },
+  redirectRow: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+  },
+  redirectBtn: {
+    flex: 1,
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
+    paddingVertical: 12,
+    borderRadius: 12,
+    marginHorizontal: 4,
+  },
+  googleBtn: {
+    backgroundColor: "#34A853",
+  },
+  appleBtn: {
+    backgroundColor: "#2C2C2E",
+    borderWidth: 1,
+    borderColor: "#38383A",
+  },
+  redirectBtnEmoji: {
+    marginRight: 6,
+    fontSize: 14,
+  },
+  redirectBtnText: {
+    color: "#FFF",
+    fontSize: 12,
+    fontWeight: "bold",
+  },
 
   actionBtn: {
     backgroundColor: "#0A84FF",

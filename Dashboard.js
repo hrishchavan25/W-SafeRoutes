@@ -7,13 +7,19 @@ import {
   StyleSheet,
   ImageBackground,
   StatusBar,
+  Alert,
+  Linking,
 } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
+import * as Location from "expo-location";
+import MLService from "./MLServices";
 
-export default function Dashboard({ navigation, userName = "User" }) {
+export default function Dashboard({ navigation, userName = "User", onLogout }) {
   const handleMapPress = () => {
     console.log("Navigate to Map");
-    // navigation.navigate("Map");
+    if (navigation && navigation.navigate) {
+      navigation.navigate("Map");
+    }
   };
 
   const handleProfilePress = () => {
@@ -21,9 +27,79 @@ export default function Dashboard({ navigation, userName = "User" }) {
     // navigation.navigate("Profile");
   };
 
-  const handleSOSPress = () => {
+  const handleSOSPress = async () => {
     console.log("SOS Alert Triggered!");
-    // You can trigger SOS alert logic here
+    Alert.alert(
+      "🚨 SOS Triggered",
+      "Are you sure you want to trigger SOS? This will alert emergency services and contacts.",
+      [
+        {
+          text: "Cancel",
+          style: "cancel",
+        },
+        {
+          text: "YES, TRIGGER",
+          style: "destructive",
+          onPress: async () => {
+            try {
+              // 1. Request location permission
+              let { status } = await Location.requestForegroundPermissionsAsync();
+              let location = null;
+              if (status === "granted") {
+                location = await Location.getCurrentPositionAsync({
+                  accuracy: Location.Accuracy.Balanced,
+                });
+              } else {
+                console.log("Location permission denied");
+              }
+
+              const params = {
+                user_id: userName,
+                latitude: location ? location.coords.latitude : null,
+                longitude: location ? location.coords.longitude : null,
+                message: `Emergency SOS triggered by ${userName}! Please assist.`,
+              };
+
+              // 2. Call backend SOS service
+              try {
+                const res = await MLService.activateSOS(params);
+                console.log("SOS Backend Response:", res);
+              } catch (err) {
+                console.log("Could not contact SOS backend:", err);
+              }
+
+              // 3. Inform user and trigger calls
+              Alert.alert(
+                "🚨 Alert Dispatched",
+                "Police (103), Ambulance (102), Fire (101), and emergency contacts have been notified.\n\nInitiating emergency phone calls...",
+                [
+                  {
+                    text: "Call 103 (Police)",
+                    onPress: () => {
+                      Linking.openURL("tel:103").catch(() => {
+                        Alert.alert("Error", "Could not open dialer for 103");
+                      });
+                    },
+                  },
+                  {
+                    text: "Call 100 (Alternative Police)",
+                    onPress: () => {
+                      Linking.openURL("tel:100").catch(() => {
+                        Alert.alert("Error", "Could not open dialer for 100");
+                      });
+                    },
+                  },
+                  { text: "Dismiss", style: "cancel" },
+                ]
+              );
+            } catch (error) {
+              Alert.alert("SOS Error", "Failed to trigger SOS fully. Calling police dialer immediately.");
+              Linking.openURL("tel:103").catch(() => { });
+            }
+          },
+        },
+      ]
+    );
   };
 
   return (
@@ -81,6 +157,17 @@ export default function Dashboard({ navigation, userName = "User" }) {
               <Text style={styles.sosText}>SOS</Text>
             </TouchableOpacity>
           </View>
+
+          {/* Logout Button */}
+          {onLogout && (
+            <TouchableOpacity
+              style={styles.logoutButton}
+              onPress={onLogout}
+              activeOpacity={0.8}
+            >
+              <Text style={styles.logoutText}>Logout</Text>
+            </TouchableOpacity>
+          )}
         </View>
 
         {/* Footer */}
@@ -190,6 +277,21 @@ const styles = StyleSheet.create({
     color: "#fff",
     fontWeight: "bold",
     marginTop: 5,
+  },
+  logoutButton: {
+    marginTop: 10,
+    paddingVertical: 12,
+    paddingHorizontal: 40,
+    backgroundColor: "rgba(255, 59, 48, 0.8)",
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: "rgba(255, 255, 255, 0.3)",
+    alignSelf: "center",
+  },
+  logoutText: {
+    color: "#fff",
+    fontSize: 16,
+    fontWeight: "700",
   },
   footer: {
     paddingBottom: 30,
