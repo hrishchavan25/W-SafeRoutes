@@ -13,11 +13,36 @@ import {
   Alert,
   StatusBar,
   ImageBackground,
+  Modal,
+  ScrollView,
 } from "react-native";
 
 // 🔹 Database setup placeholder (connect later via Firebase or firewall)
 const connectToDatabase = () => {
   console.log("Database connection setup will go here");
+};
+
+const LEGAL_DOCS = {
+  terms: {
+    title: "Terms and Conditions",
+    body: [
+      "Welcome to W-SafeRoutes. By creating an account, logging in, or using the app, you agree to use the service responsibly and only for lawful personal safety and route-planning purposes.",
+      "W-SafeRoutes provides safety insights, route suggestions, emergency contact tools, and map-based information. These features are provided for assistance only and should not replace your personal judgment, local emergency services, official safety guidance, or real-time conditions around you.",
+      "You are responsible for keeping your account details secure and for entering accurate information when using route, SOS, or location-based features.",
+      "The app may depend on third-party services for maps, routing, geocoding, hosting, authentication, and other technical features. Availability and accuracy may vary based on network access, device settings, location permissions, and third-party service performance.",
+      "We may update app features, safety logic, and these terms from time to time. Continued use of the app means you accept the updated terms.",
+    ],
+  },
+  privacy: {
+    title: "Privacy Policy",
+    body: [
+      "W-SafeRoutes collects the information needed to provide account access and safety-route features, such as your name, email address, password authentication data, selected start and destination areas, route requests, and location data when you allow location-based features.",
+      "Location and route information is used to generate safety analysis, route suggestions, maps, and SOS-related functionality. Account information is used for login, signup, session handling, and user identification inside the app.",
+      "Your information may be processed by backend hosting, database, authentication, maps, routing, geocoding, and analytics or infrastructure providers that help the app function. We do not sell your personal information.",
+      "You can deny device location permission, but some route and safety features may not work fully. You can log out from the app to remove the saved local session from your device.",
+      "For account deletion, privacy questions, or data requests, contact the app owner or developer using the support contact listed on the app store listing.",
+    ],
+  },
 };
 
 // Main App Component
@@ -30,6 +55,8 @@ export default function App() {
   const [confirmPassword, setConfirmPassword] = useState("");
   const [userName, setUserName] = useState("");
   const [currentScreen, setCurrentScreen] = useState("dashboard");
+  const [acceptedLegal, setAcceptedLegal] = useState(false);
+  const [legalDoc, setLegalDoc] = useState(null);
 
   useEffect(() => {
     checkSavedSession();
@@ -51,6 +78,14 @@ export default function App() {
   };
 
   const handleSubmit = async () => {
+    if (!acceptedLegal) {
+      Alert.alert(
+        "Agreement Required",
+        "Please accept the Terms and Conditions and Privacy Policy to continue."
+      );
+      return;
+    }
+
     if (isLogin) {
       if (!email && !password) {
         Alert.alert("Missing Details", "Please enter your email and password.");
@@ -167,6 +202,13 @@ export default function App() {
     Alert.alert("Logged Out", "You have been logged out successfully.");
   };
 
+  const toggleAuthMode = () => {
+    setIsLogin(!isLogin);
+    setAcceptedLegal(false);
+  };
+
+  const activeLegalDoc = legalDoc ? LEGAL_DOCS[legalDoc] : null;
+
   if (isLoggedIn) {
     if (currentScreen === "mldashboard") {
       return (
@@ -248,13 +290,35 @@ export default function App() {
             />
           )}
 
+          <View style={styles.legalRow}>
+            <TouchableOpacity
+              style={[styles.checkbox, acceptedLegal && styles.checkboxChecked]}
+              onPress={() => setAcceptedLegal(!acceptedLegal)}
+              accessibilityRole="checkbox"
+              accessibilityState={{ checked: acceptedLegal }}
+            >
+              {acceptedLegal ? <Text style={styles.checkboxMark}>✓</Text> : null}
+            </TouchableOpacity>
+            <Text style={styles.legalText}>
+              I agree to the{" "}
+              <Text style={styles.legalLink} onPress={() => setLegalDoc("terms")}>
+                Terms and Conditions
+              </Text>
+              {" "}and{" "}
+              <Text style={styles.legalLink} onPress={() => setLegalDoc("privacy")}>
+                Privacy Policy
+              </Text>
+              .
+            </Text>
+          </View>
+
           <TouchableOpacity style={styles.button} onPress={handleSubmit}>
             <Text style={styles.buttonText}>
               {isLogin ? "Login" : "Sign Up"}
             </Text>
           </TouchableOpacity>
 
-          <TouchableOpacity onPress={() => setIsLogin(!isLogin)}>
+          <TouchableOpacity onPress={toggleAuthMode}>
             <Text style={styles.switchText}>
               {isLogin
                 ? "Don't have an account? Sign up"
@@ -263,6 +327,29 @@ export default function App() {
           </TouchableOpacity>
         </View>
       </View>
+
+      <Modal
+        visible={!!activeLegalDoc}
+        transparent
+        animationType="slide"
+        onRequestClose={() => setLegalDoc(null)}
+      >
+        <View style={styles.modalBackdrop}>
+          <View style={styles.legalModal}>
+            <Text style={styles.legalTitle}>{activeLegalDoc?.title}</Text>
+            <ScrollView style={styles.legalScroll} showsVerticalScrollIndicator>
+              {activeLegalDoc?.body.map((paragraph, index) => (
+                <Text key={index} style={styles.legalParagraph}>
+                  {paragraph}
+                </Text>
+              ))}
+            </ScrollView>
+            <TouchableOpacity style={styles.modalButton} onPress={() => setLegalDoc(null)}>
+              <Text style={styles.modalButtonText}>Close</Text>
+            </TouchableOpacity>
+          </View>
+        </View>
+      </Modal>
     </ImageBackground>
   );
 }
@@ -313,6 +400,86 @@ const styles = StyleSheet.create({
     marginTop: 10,
   },
   buttonText: { color: "#fff", fontWeight: "700", fontSize: 18 },
+  legalRow: {
+    width: "100%",
+    flexDirection: "row",
+    alignItems: "flex-start",
+    marginTop: 2,
+    marginBottom: 6,
+  },
+  checkbox: {
+    width: 24,
+    height: 24,
+    borderRadius: 6,
+    borderWidth: 2,
+    borderColor: "#fff",
+    marginRight: 10,
+    justifyContent: "center",
+    alignItems: "center",
+    backgroundColor: "rgba(255,255,255,0.12)",
+  },
+  checkboxChecked: {
+    backgroundColor: "#2E8B8B",
+  },
+  checkboxMark: {
+    color: "#fff",
+    fontSize: 16,
+    fontWeight: "900",
+    lineHeight: 18,
+  },
+  legalText: {
+    flex: 1,
+    color: "#fff",
+    fontSize: 13,
+    lineHeight: 19,
+    fontWeight: "600",
+  },
+  legalLink: {
+    color: "#E8FFFF",
+    textDecorationLine: "underline",
+    fontWeight: "900",
+  },
+  modalBackdrop: {
+    flex: 1,
+    backgroundColor: "rgba(0,0,0,0.65)",
+    justifyContent: "center",
+    alignItems: "center",
+    padding: 20,
+  },
+  legalModal: {
+    width: "100%",
+    maxWidth: 520,
+    maxHeight: "82%",
+    backgroundColor: "#fff",
+    borderRadius: 18,
+    padding: 20,
+  },
+  legalTitle: {
+    fontSize: 22,
+    fontWeight: "800",
+    color: "#173B3B",
+    marginBottom: 12,
+  },
+  legalScroll: {
+    marginBottom: 16,
+  },
+  legalParagraph: {
+    color: "#243333",
+    fontSize: 15,
+    lineHeight: 22,
+    marginBottom: 12,
+  },
+  modalButton: {
+    backgroundColor: "#2E8B8B",
+    paddingVertical: 12,
+    borderRadius: 8,
+    alignItems: "center",
+  },
+  modalButtonText: {
+    color: "#fff",
+    fontSize: 16,
+    fontWeight: "800",
+  },
   switchText: {
     color: "#fff",
     marginTop: 20,

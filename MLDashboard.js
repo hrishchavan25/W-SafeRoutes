@@ -19,7 +19,6 @@ import { Picker } from "@react-native-picker/picker";
 import { Ionicons } from "@expo/vector-icons";
 import MLService from "./MLServices";
 import SafetyRouteMap from "./components/SafetyRouteMap";
-import { BACKEND_URL } from "./config";
 import { ANDHERI_REGIONS, getRegionById } from "./data/andheri_regions";
 
 const { width, height } = Dimensions.get("window");
@@ -55,13 +54,11 @@ export default function MLDashboard({ userName = "User", onLogout, onBack }) {
   const ANDHERI_DEST = { lat: 19.1350, lon: 72.8150 };
 
   const [selectedCity, setSelectedCity] = useState("mumbai");
-  const [apiHost, setApiHost] = useState(BACKEND_URL);
   const [loading, setLoading] = useState(false);
   const [zonesLoading, setZonesLoading] = useState(false);
   const [route, setRoute] = useState([]);
   const [fastestRoute, setFastestRoute] = useState([]);
   const [zones, setZones] = useState([]);
-  const [networkError, setNetworkError] = useState(null);
 
   // Stats
   const [trafficDelay, setTrafficDelay] = useState(null);
@@ -98,28 +95,20 @@ export default function MLDashboard({ userName = "User", onLogout, onBack }) {
   }, []);
 
   const loadSettings = async () => {
-    const host = await MLService.getApiHost();
-    setApiHost(host);
-    refreshData(host);
+    refreshData();
   };
 
-  const refreshData = async (host, cityOverride) => {
+  const refreshData = async (cityOverride) => {
     setZonesLoading(true);
-    setNetworkError(null);
     try {
       const city = cityOverride || selectedCity;
       const data = await MLService.getZones({ city, limit: 1000 });
       if (data.zones) setZones(data.zones);
     } catch (err) {
-      setNetworkError("Cannot connect to ML Backend");
-      console.log(err);
+      console.log("Safety zone refresh failed:", err);
     } finally {
       setZonesLoading(false);
     }
-  };
-
-  const handleRefresh = () => {
-    refreshData(apiHost);
   };
 
   const switchCity = (city) => {
@@ -135,14 +124,14 @@ export default function MLDashboard({ userName = "User", onLogout, onBack }) {
       setSource(CHICAGO_SOURCE);
       setDestination(CHICAGO_DEST);
       setMapRegion(CHICAGO_REGION);
-      refreshData(apiHost, city);
+      refreshData(city);
       return;
     }
     if (city === "mumbai") {
       setSource(MUMBAI_SOURCE);
       setDestination(MUMBAI_DEST);
       setMapRegion(MUMBAI_REGION);
-      refreshData(apiHost, city);
+      refreshData(city);
       return;
     }
     setFromRegionId("railway");
@@ -154,7 +143,7 @@ export default function MLDashboard({ userName = "User", onLogout, onBack }) {
     setFromPlace(rFrom.name);
     setToPlace(rTo.name);
     setMapRegion(regionFromPoints(rFrom.lat, rFrom.lon, rTo.lat, rTo.lon));
-    refreshData(apiHost, city);
+    refreshData(city);
   };
 
   const resolvePlacesToCoordinates = async () => {
@@ -201,7 +190,6 @@ export default function MLDashboard({ userName = "User", onLogout, onBack }) {
   const runPrediction = async () => {
     if (loading) return;
     setLoading(true);
-    setNetworkError(null);
     setGoogleMapsUrl(null);
     setAppleMapsUrl(null);
 
@@ -257,28 +245,10 @@ export default function MLDashboard({ userName = "User", onLogout, onBack }) {
       await Promise.all([safePromise, astarPromise]);
 
     } catch (err) {
-      const host = await MLService.getApiHost();
-      setNetworkError(`Network Error: Ensure backend is running at ${host} and your phone can reach this computer's IP.`);
-      console.log(err);
+      console.log("Route analysis failed:", err);
+      Alert.alert("Route unavailable", "Safety routing could not be completed right now. Please try again.");
     } finally {
       setLoading(false);
-    }
-  };
-
-  const testConnection = async () => {
-    setZonesLoading(true);
-    setNetworkError(null);
-    try {
-      const status = await MLService.healthCheck();
-      if (status.status === "ok") {
-        Alert.alert("Success", "AI Backend is connected and running!");
-        refreshData(apiHost);
-      }
-    } catch (err) {
-      setNetworkError(`Connection Failed to ${apiHost}. Check your IP and Firewall.`);
-      Alert.alert("Connection Failed", "Ensure uvicorn is running on your computer.");
-    } finally {
-      setZonesLoading(false);
     }
   };
 
@@ -311,7 +281,7 @@ export default function MLDashboard({ userName = "User", onLogout, onBack }) {
           </View>
         </View>
         <View style={{ flexDirection: 'row', alignItems: 'center' }}>
-          <TouchableOpacity style={[styles.refreshBadge, { marginRight: 10 }]} onPress={() => refreshData(apiHost)}>
+          <TouchableOpacity style={[styles.refreshBadge, { marginRight: 10 }]} onPress={() => refreshData()}>
             {zonesLoading ? (
               <ActivityIndicator size="small" color="#0A84FF" />
             ) : (
@@ -326,39 +296,27 @@ export default function MLDashboard({ userName = "User", onLogout, onBack }) {
 
       <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={{ paddingBottom: 40 }}>
 
-        {/* API Config Panel */}
+        {/* Coverage Panel */}
         <View style={styles.glassCard}>
-          <Text style={styles.cardLabel}>AI BACKEND (FROM CONFIG.JS)</Text>
+          <Text style={styles.cardLabel}>COVERAGE AREA</Text>
           <View style={[styles.inputRow, { marginBottom: 10 }]}>
             <TouchableOpacity
-              style={[styles.connectBtn, { flex: 1, marginRight: 6 }, selectedCity === "chicago" ? null : { backgroundColor: "#2C2C2E" }]}
+              style={[styles.cityBtn, selectedCity === "chicago" ? null : styles.inactiveCityBtn]}
               onPress={() => switchCity("chicago")}
             >
-              <Text style={[styles.connectBtnText, { textAlign: 'center' }]}>Chicago</Text>
+              <Text style={styles.cityBtnText}>Chicago</Text>
             </TouchableOpacity>
             <TouchableOpacity
-              style={[styles.connectBtn, { flex: 1, marginRight: 6 }, selectedCity === "mumbai" ? null : { backgroundColor: "#2C2C2E" }]}
+              style={[styles.cityBtn, selectedCity === "mumbai" ? null : styles.inactiveCityBtn]}
               onPress={() => switchCity("mumbai")}
             >
-              <Text style={[styles.connectBtnText, { textAlign: 'center' }]}>Mumbai</Text>
+              <Text style={styles.cityBtnText}>Mumbai</Text>
             </TouchableOpacity>
             <TouchableOpacity
-              style={[styles.connectBtn, { flex: 1 }, selectedCity === "andheri" ? null : { backgroundColor: "#2C2C2E" }]}
+              style={[styles.cityBtn, selectedCity === "andheri" ? null : styles.inactiveCityBtn]}
               onPress={() => switchCity("andheri")}
             >
-              <Text style={[styles.connectBtnText, { textAlign: 'center' }]}>Andheri</Text>
-            </TouchableOpacity>
-          </View>
-          <View style={styles.inputRow}>
-            <TextInput
-              style={[styles.apiInput, { opacity: 0.8 }]}
-              value={apiHost}
-              editable={false}
-              placeholder="https://...ngrok-free.app"
-              placeholderTextColor="#636366"
-            />
-            <TouchableOpacity style={styles.connectBtn} onPress={handleRefresh}>
-              <Text style={styles.connectBtnText}>Refresh</Text>
+              <Text style={styles.cityBtnText}>Andheri</Text>
             </TouchableOpacity>
           </View>
           <Text style={styles.helperText}>
@@ -366,11 +324,6 @@ export default function MLDashboard({ userName = "User", onLogout, onBack }) {
             {selectedCity === "chicago" ? " | Geocode + maps path (Chicago)" :
               selectedCity === "mumbai" ? " | Geocode + maps path (Mumbai)" : " | Region dropdowns (Andheri)"}
           </Text>
-
-          <TouchableOpacity style={styles.testBtn} onPress={testConnection}>
-            <Text style={styles.testBtnText}>Check Connection Status</Text>
-          </TouchableOpacity>
-          {networkError && <Text style={styles.errorText}>{networkError}</Text>}
         </View>
 
         {/* Map Container (native: MapView; web: SafetyRouteMap.web.js — no react-native-maps) */}
@@ -611,16 +564,17 @@ const styles = StyleSheet.create({
   smallLabel: { fontSize: 9, fontWeight: "bold", color: "#636366", marginBottom: 5 },
 
   inputRow: { flexDirection: "row", alignItems: "center" },
-  apiInput: {
+  cityBtn: {
     flex: 1,
-    backgroundColor: '#2C2C2E',
+    marginHorizontal: 3,
+    backgroundColor: "#0A84FF",
+    paddingHorizontal: 15,
+    paddingVertical: 12,
     borderRadius: 12,
-    padding: 12,
-    color: '#FFF',
-    fontSize: 14,
+    alignItems: "center",
   },
-  connectBtn: { marginLeft: 10, backgroundColor: "#0A84FF", paddingHorizontal: 15, paddingVertical: 12, borderRadius: 12 },
-  connectBtnText: { color: "#FFF", fontSize: 12, fontWeight: "bold" },
+  inactiveCityBtn: { backgroundColor: "#2C2C2E" },
+  cityBtnText: { color: "#FFF", fontSize: 12, fontWeight: "bold", textAlign: "center" },
 
   mapContainer: {
     marginHorizontal: 15,
@@ -771,10 +725,7 @@ const styles = StyleSheet.create({
   infoTitle: { color: '#FFF', fontWeight: 'bold', fontSize: 14, marginBottom: 8 },
   infoText: { color: '#8E8E93', fontSize: 12, lineHeight: 18 },
 
-  errorText: { color: "#FF453A", fontSize: 11, marginTop: 10, textAlign: "center", fontWeight: 'bold' },
   helperText: { color: "#8E8E93", fontSize: 10, marginTop: 8, textAlign: "center", fontStyle: 'italic' },
-  testBtn: { marginTop: 12, padding: 8, alignItems: 'center', borderTopWidth: 1, borderColor: '#2C2C2E' },
-  testBtnText: { color: '#0A84FF', fontSize: 11, fontWeight: '600' },
   markerContainer: { width: 24, height: 24, borderRadius: 12, backgroundColor: 'rgba(255,255,255,0.2)', alignItems: 'center', justifyContent: 'center' },
   markerDot: { width: 12, height: 12, borderRadius: 6, borderWidth: 2, borderColor: '#FFF' },
   logoutBtn: {

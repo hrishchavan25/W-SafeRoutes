@@ -1,21 +1,9 @@
-import AsyncStorage from '@react-native-async-storage/async-storage';
 import { BACKEND_URL, SOS_BACKEND_URL } from './config';
 
 class MLService {
   static async getApiHost() {
-    // We now use config.js as the source of truth as requested
+    // config.js is the single source of truth for deployable ML API wiring.
     return BACKEND_URL;
-  }
-
-
-
-  static async saveApiHost(host) {
-    try {
-      await AsyncStorage.setItem('API_HOST', host);
-      return true;
-    } catch (e) {
-      return false;
-    }
   }
 
   static async healthCheck() {
